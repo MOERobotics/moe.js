@@ -1,0 +1,9 @@
+{
+	"compilerOptions" : {
+		"outDir": "./build",
+		"charset": "utf8",
+		"target": "ES6",
+		"noResolve": true,
+		"allowSyntheticDefaultImports": true
+	}
+}
