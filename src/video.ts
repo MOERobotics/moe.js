@@ -1,4 +1,7 @@
 import {DataChannel, DataPacket, PacketRecievedEvent, PacketTypeCode} from "./channels";
+export interface VideoStreamRenderer {
+	
+}
 export class MJPEGVideoStreamDecoder {
         channel : DataChannel;
         ctx : CanvasRenderingContext2D;

@@ -1,9 +1,15 @@
 {
 	"compilerOptions" : {
-		"outDir": "./build",
+		
+		"outDir": "./build/js",
 		"charset": "utf8",
 		"target": "ES6",
 		"noResolve": true,
-		"allowSyntheticDefaultImports": true
-	}
+		"allowSyntheticDefaultImports": true,
+		"sourceMap": true,
+		"allowJs": true
+	},
+	"include": [
+		"./src/**/*"
+	]
 }
