@@ -1,28 +1,35 @@
+import Decoder from "./decoder"
 class H264Decoder {
 	protected readonly _worker : Worker;
 	onRenderFrame : (buf : Uint8Array, width : number, height : number) => void;
-	constructor(options) {
+	readonly memsize : number;
+	readonly decode : (data : {buffer : Uint8Array, byteOffset : number, length : number}, info? : any) => void;
+	readonly reuseMemory : boolean;
+	protected decoder : Decoder;
+	constructor(options : {onRenderFrame? : (buf : Uint8Array, width : number, height : number) => void, worker? : boolean, webgl? : boolean, reuseMemory? : boolean, transferMemory? : boolean, memsize? : number}) {
 		if ('onRenderFrame' in options)
 			this.onRenderFrame = options.onRenderFrame;
+		this.reuseMemory = options.reuseMemory && options.worker;
 		if (options.worker) {
 			this._worker = new Worker("decoder.js");
 			this._worker.addEventListener('message', e=>{
 				var data = e.data;
 				this.onPictureDecoded(new Uint8Array(data.buf, 0, data.length), data.width, data.height, data.infos);
 			}, false);
+			this.memsize = options.memsize;
 			this._worker.postMessage({type: "Broadway.js - Worker init", options: {
 				rgb: !options.webgl,
 				memsize: this.memsize,
 				reuseMemory: options.reuseMemory ? true : false
 			}});
-			var getWsBuffer;
+			var getWsBuffer : (data : {buffer : Uint8Array, length : number}) => Uint8Array;
 			if (options.transferMemory) {
 				// Send data to our worker.
 				getWsBuffer = (data) => (data.buffer);
 			} else {
 				getWsBuffer = (data) => {
 					var result = new Uint8Array(data.length);
-					result.set(data.buffer, 0, data.length);
+					result.set(data.buffer, 0);
 					return result;
 				};
 			}
@@ -30,21 +37,17 @@ class H264Decoder {
 				var buf = getWsBuffer(data);
 				this._worker.postMessage({buf: buf, offset: data.byteOffset, length: data.length, info: info}, [buf]);
 			};
-			if (options.reuseMemory)
-				this.recycleMemory = (arr) => (this._worker.postMessage({reuse: arr.buffer}, [arr.buffer]));
 		} else {
 			this.decoder = new Decoder({rgb: !options.webgl});
 			this.decode = this.decoder.decode.bind(this.decoder);
 			this.decoder.onPictureDecoded = this.onPictureDecoded;
 		}
 	}
-	recycleMemory(arr) {
-		// NOP
-	}
-	onPictureDecoded(buffer, width, height, info) {
+	onPictureDecoded(buffer : Uint8Array, width : number, height : number, info : any) : void {
 		if (this.onRenderFrame)
 			this.onRenderFrame(buffer, width, height);
-		this.recycleMemory(buffer);
+		if (this.reuseMemory)
+			this._worker.postMessage({reuse: buffer}, [buffer]);
 	}
 }
 
@@ -59,7 +62,8 @@ export class H264Renderer {
 	protected texturePosBuffer : WebGLBuffer;
 	protected uTexturePosBuffer : WebGLBuffer;
 	protected vTexturePosBuffer : WebGLBuffer;
-	constructor(options : {canvas: HTMLCanvasElement, width: number, height: number, webgl? : boolean, worker : boolean = true}) {
+	protected readonly imageData : ImageData;
+	constructor(options : {canvas: HTMLCanvasElement, width: number, height: number, webgl? : boolean, worker? : boolean}) {
 		this.canvas = options.canvas;
 		this.width = options.width || options.canvas.width;
 		this.height = options.height || options.canvas.height;
@@ -84,17 +88,21 @@ export class H264Renderer {
 		}
 		this.decoder = new H264Decoder({
 			onRenderFrame: this.webgl ? this._doRenderFrameWebGL.bind(this) : this._doRenderFrameRGB.bind(this),
-			worker: options.worker,
+			worker: ('worker' in options) ? options.worker : true,
 			webgl: this.webgl
 		});
 	}
 	/**
 	 * Draw frame from raw (encoded) data
 	 */
-	draw(data) {
-		this.decoder.decode(data);
+	draw(data : {buffer : Uint8Array, byteOffset? : number, length? : number}) : void{
+		this.decoder.decode({
+			buffer: data.buffer,
+			byteOffset: data.byteOffset || 0,
+			length: data.length || 0
+		});
 	}
-	_initProgramWebGL() {
+	_initProgramWebGL() : void {
 		const YUV2RGB = [
 			1.16438,  0.00000,  1.59603, -0.87079,
 			1.16438, -0.39176, -0.81297,  0.52959,
@@ -157,7 +165,7 @@ export class H264Renderer {
 
 		this.shaderProgram = program;
 	}
-	_initBuffersWebGL() {
+	_initBuffersWebGL() : void {
 		var gl = this.ctx as WebGLRenderingContext;
 		var program = this.shaderProgram;
 		var vertexPosBuffer = gl.createBuffer();
@@ -198,7 +206,7 @@ export class H264Renderer {
 
 		this.vTexturePosBuffer = vTexturePosBuffer;
 	}
-	_doRenderFrameWebGL(buffer : Uint8Array, width : number, height : number) {
+	_doRenderFrameWebGL(buffer : Uint8ClampedArray, width : number, height : number) : void {
 		console.log('rendering frame webgl');
 		const gl = this.ctx as WebGLRenderingContext;
 		var texturePosBuffer = this.texturePosBuffer;
@@ -215,12 +223,6 @@ export class H264Renderer {
 		var yDataPerRow = width;
 		var yRowCnt     = height;
 
-		var uDataPerRow = (width / 2);
-		var uRowCnt     = (height / 2);
-
-		var vDataPerRow = uDataPerRow;
-		var vRowCnt     = uRowCnt;
-
 		gl.viewport(0, 0, width, height);
 
 		var tTop = 0;
@@ -233,10 +235,11 @@ export class H264Renderer {
 		gl.bufferData(gl.ARRAY_BUFFER, texturePosValues, gl.DYNAMIC_DRAW);
 		console.log('done');
 	}
-	_doRenderFrameWebRGB(buffer, width, height) {
+	_doRenderFrameRGB(buffer : Uint8ClampedArray, width : number, height : number) : void {
 		console.log('rendering frame raw');
 		const imageData = this.imageData;
-		imageData.set(buffer);
-		(this.ctx as CanvasRenderingContext2D).putImageData(imageData, 0, 0);
+		const ctx = this.ctx as CanvasRenderingContext2D;
+		imageData.data.set(buffer);
+		ctx.putImageData(imageData, 0, 0);
 	}
 }
