@@ -1,20 +1,17 @@
-export interface EventHandler {
-	(event:Event): boolean;
-}
 /**
  * Implementation of EventTarget
  */
 export class Emitter implements EventTarget {
-	handlers: {[index:string]:EventHandler[]};
+	handlers: {[index:string]: EventListenerOrEventListenerObject[]};
 	constructor() {
 		this.handlers = {};
 	}
-	addEventListener(event:string, callback:EventHandler) : void {
-		if (!(event in this.handlers))
-			this.handlers[event] = [];
-		this.handlers[event].push(callback);
+	addEventListener(type: string, listener?: EventListenerOrEventListenerObject, options?: boolean | {capture?: boolean, once?: boolean, passive?: boolean}): void {
+		if (!(type in this.handlers))
+			this.handlers[type] = [];
+		this.handlers[type].push(listener);
 	}
-	removeEventListener(event:string, callback:EventHandler) : boolean {
+	removeEventListener(event: string, callback: EventListenerOrEventListenerObject) : boolean {
 		if (!(event in this.handlers))
 			return false;
 		var toRemove : string[];
@@ -26,13 +23,16 @@ export class Emitter implements EventTarget {
 			delete handlers[i];
 		return toRemove.length > 0;
 	}
-	dispatchEvent(event:Event) : boolean {
+	dispatchEvent(event: Event) : boolean {
 		Object.defineProperty(event, 'target', {value: this});
-		var handlers : EventHandler[] = this.handlers[event.type];
+		var handlers : EventListenerOrEventListenerObject[] = this.handlers[event.type];
 		if (!handlers)
 			return event.defaultPrevented;
 		for (var handler of handlers) {
-			handler.apply(event);
+			if ((<EventListenerObject>handler).handleEvent)
+				(<EventListenerObject>handler).handleEvent(event);
+			else
+				(<EventListener>handler)(event);
 			if (event.defaultPrevented)
 				return false;
 		}
