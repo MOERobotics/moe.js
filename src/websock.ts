@@ -59,7 +59,7 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 	protected name : string;
 	protected direction : DataChannelDirection;
 	protected mediaType : DataChannelMediaType;
-	protected subscribed : boolean;
+	protected subscribed : boolean = false;
 	constructor(stream : WebsocketDataStream, options:{id:number; name:string; direction?:DataChannelDirection; mediaType?:DataChannelMediaType}) {
 		super();
 		this.stream = stream;
