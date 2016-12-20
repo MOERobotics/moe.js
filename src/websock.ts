@@ -4,8 +4,8 @@ import {WrappedPacket} from "./packet";
 
 export class WebsocketDataStream extends Emitter implements DataStream {
 	socket : WebSocket;
-	ackHandlers: {(packet:DataPacket) : void}[] = [];
-	channels: DataChannel[] = [];
+	ackHandlers: {[index: number]: {success: (packet: DataPacket) => void, error: (packet: DataPacket) => void}} = {};
+	channels: {[index: number]: DataChannel} = {};
 	lastId: number = 1;
 	constructor(options : WebSocket | {url:string, protocol?:string, protocols?:string[]}) {
 		super();
@@ -36,13 +36,16 @@ export class WebsocketDataStream extends Emitter implements DataStream {
 			//TODO send error packet
 		}
 	}
-	_sendPacket(packet : MutableDataPacket, expectResponse:boolean = false) : Optional<Promise<DataPacket>> {
+	_sendPacket(packet: MutableDataPacket, expectResponse: boolean = false): Optional<Promise<DataPacket>> {
 		packet.setId(++this.lastId);
 		var result : Optional<Promise<DataPacket>> = undefined;
+		if (!this.isConnected()) {
+			if (expectResponse)
+				return Promise.reject('Connection is closed');
+			return;
+		}
 		if (expectResponse)
-			result = new Promise<DataPacket>((yay, nay) => {
-				this.ackHandlers[packet.getId()] = yay;
-			});
+			result = new Promise<DataPacket>((yay, nay) => (this.ackHandlers[packet.getId()] = {success: yay, error: nay}));
 		this.socket.send(packet.getArrayBuffer());
 		return result;
 	}
