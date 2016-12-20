@@ -68,7 +68,7 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 		this.direction = options.direction;
 		this.mediaType = options.mediaType;
 	}
-	getId() :number {
+	getId(): number {
 		return this.id;
 	}
 	getName() : string {
@@ -80,11 +80,19 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 	getMediaType() : DataChannelMediaType {
 		return this.mediaType;
 	}
-	subscribe() : Promise<any> {
-		return new Promise<any> ((yay, nay) => {
-			var packet = new WrappedPacket(12);
-
-		});
+	subscribe() : Promise<DataChannel> {
+		if (this.isSubscribed())
+			return Promise.resolve(this);
+		var packet = new WrappedPacket(4);
+		packet.setTypeCode(PacketTypeCode.CHANNEL_SUBSCRIBE);
+		var view = packet.getDataView();
+		view.setUint16(0, 1);
+		view.setUint16(2, this.getId());
+		return (<Promise<DataPacket>>this.stream.channels[0].sendPacket(packet, true))
+			.then(ack => {
+				this.subscribed = true;
+				return this;
+			});
 	}
 	isSubscribed() : boolean {
 		return this.subscribed;
