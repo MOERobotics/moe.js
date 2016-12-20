@@ -1,5 +1,5 @@
 import {Emitter} from "./events";
-import {DataPacket, DataChannel, MutableDataPacket, Optional, DataStream, DataChannelDirection, DataChannelMediaType, PacketTypeCode} from "./channels";
+import {DataPacket, DataChannel, MutableDataPacket, Optional, DataStream, DataChannelDirection, DataChannelMediaType, PacketTypeCode, PacketRecievedEvent} from "./channels";
 import {WrappedPacket} from "./packet";
 
 export class WebsocketDataStream extends Emitter implements DataStream {
@@ -7,31 +7,73 @@ export class WebsocketDataStream extends Emitter implements DataStream {
 	ackHandlers: {[index: number]: {success: (packet: DataPacket) => void, error: (packet: DataPacket) => void}} = {};
 	channels: {[index: number]: DataChannel} = {};
 	lastId: number = 1;
-	constructor(options : WebSocket | {url:string, protocol?:string, protocols?:string[]}) {
-		super();
-		if (options instanceof WebSocket)
-			this.socket = options;
-		else
-			this.socket = new WebSocket(options.url, options.protocol || options.protocols);
-		this.channels[0] = new WebsocketDataChannel(this, {id:0,name:"META",mediaType:DataChannelMediaType.META,direction:DataChannelDirection.BOTH});
+	static connect(options : {url : string, protocol? : string, protocols? : string[]}) : Promise<WebsocketDataStream> {
+		var socket = new WebSocket(options.url, options.protocol || options.protocols);
+		return new Promise((y,n)=>{
+			var h1 = e=>{socket.removeEventListener('error', h2);y(e);};
+			var h2 = e=>{socket.removeEventListener('open', h1);n(e);};
+			socket.addEventListener('open', h1, {once: true});
+			socket.addEventListener('error', h2, {once: true});
+			if (socket.readyState == WebSocket.OPEN)
+				socket.dispatchEvent(new Event('open'));
+			else if (socket.readyState != WebSocket.CONNECTING)
+				socket.dispatchEvent(new Event('error'));
+		}).then(e=>(new WebsocketDataStream(socket)));
 	}
-	getAvailableChannels() : Promise<DataChannel[]> {
-		return new Promise<DataPacket>((yay, nay) => {
-			var packet = new WrappedPacket();
-			packet.setAckId(0);
-			packet.setTypeCode(PacketTypeCode.CHANNEL_ENUMERATION_REQUEST);
-			//Send packet on meta channel
-			return this.channels[0].sendPacket(packet, true) as Promise<DataPacket>;
-		}).then(packet=> {
-			//Parse packet
-			return null;
+	constructor(socket : WebSocket) {
+		super();
+		this.socket = socket;
+		this.socket.binaryType = 'arraybuffer';
+		this.socket.addEventListener('message', packet=>this._recvPacket(new WrappedPacket(packet.data)));
+		this.channels[0] = new WebsocketDataChannel(this, {
+			id: 0,
+			name: "META",
+			mediaType: DataChannelMediaType.META,
+			direction: DataChannelDirection.BOTH
 		});
 	}
-	protected _recvPacket(packet : DataPacket) {
-		if (packet.getAckId() in this.ackHandlers)
-			this.ackHandlers[packet.getAckId()](packet);
+	getAvailableChannels(): Promise<DataChannel[]> {
+		var packet = new WrappedPacket(0);
+		packet.setTypeCode(PacketTypeCode.CHANNEL_ENUMERATION_REQUEST);
+		//Send packet on meta channel
+		return (<Promise<DataPacket>>this.channels[0].sendPacket(packet, true))
+			.then(p2=> {
+				var buf = p2.getDataView();
+				var numChannels = buf.getUint16(0);
+				var pos = 2;
+				for (var i = 0; i < numChannels; i++) {
+					var chIdv = buf.getUint16(pos);
+					pos += 2;
+					var chTyp = buf.getUint8(pos++);
+					var chDir = buf.getUint8(pos++);
+					if (chIdv in this.channels) {
+						var current = this.channels[chIdv];
+						if (current.getDirection() == chDir && current.getMediaType() == chTyp)
+							continue;
+						if (current.isSubscribed())
+							current.unsubscribe();
+					}
+					var channel = new WebsocketDataChannel(this, {id: chIdv, name: '???', direction: chIdv, mediaType: chTyp});
+					this.channels[chIdv] = channel;
+				}
+				//Parse packet
+				return this.channels;
+			});
+	}
+	protected _recvPacket(packet: DataPacket): void {
+		console.log('recieved packet',packet, packet.getType());
+		if (packet.getAckId() in this.ackHandlers) {
+			var handler = this.ackHandlers[packet.getAckId()];
+			if (packet.getTypeCode() == PacketTypeCode.ERROR)
+				handler.error(packet);
+			else
+				handler.success(packet);
+			delete this.ackHandlers[packet.getAckId()];
+		}
 		if (packet.getChannelId() in this.channels) {
-
+			var channel = this.channels[packet.getChannelId()];
+			//TODO check subscription status?
+			channel.dispatchEvent(new PacketRecievedEvent(packet));
 		} else {
 			//TODO send error packet
 		}
