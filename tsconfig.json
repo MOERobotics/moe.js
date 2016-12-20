@@ -7,7 +7,9 @@
 		"noResolve": true,
 		"allowSyntheticDefaultImports": true,
 		"sourceMap": true,
-		"allowJs": true
+		"allowJs": true,
+		"removeComments": true,
+		"module": "system"
 	},
 	"include": [
 		"./src/**/*"

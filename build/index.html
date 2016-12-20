@@ -2,11 +2,15 @@
 <html>
 	<head>
 		<script src="utils.js"></script>
-		<script src="./js/events.js"></script>
-		<script src="./js/packet.js"></script>
-		<script src="./js/channels.js"></script>
-		<script src="./js/websock.js"></script>
-		<script src="./js/video.js"></script>
+		<script src="./system.js"></script>
+		<script>
+			SystemJS.config({baseURL: './js',defaultJSExtensions:true,map:{decoder:'/decoder.js'}});
+			var modules = ['events.js','packet.js','channels.js','websock.js','video.js','h264.js'];
+			Promise.all(modules.map(v=>SystemJS.import(v)))
+				.then(x=>(SystemJS.import('init.js')))
+				.then(ex=>(new ex.StageManager({canvas:document.getElementById('main')})).ready())
+				.then(sm=>(window.sm=sm,sm.start()));
+		</script>
 		<style>
 			#main {
 				position: fixed;
