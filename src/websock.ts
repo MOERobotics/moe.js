@@ -99,9 +99,18 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 			packet.setChannelId(this.getId());
 		return this.stream._sendPacket(packet, expectResponse);
 	}
-	unsubscribe() : Promise<any> {
-		return new Promise<any> ((yay, nay) => {
-			//TODO finish
-		});
+	unsubscribe() : Promise<DataChannel> {
+		if (!this.isSubscribed())
+			return Promise.resolve(this);
+		var unsubPacket = new WrappedPacket(4);
+		unsubPacket.setTypeCode(PacketTypeCode.CHANNEL_UNSUBSCRIBE);
+		var view = unsubPacket.getDataView();
+		view.setUint16(0, 1);
+		view.setUint16(2, this.getId());
+		return (<Promise<DataPacket>>this.stream.channels[0].sendPacket(unsubPacket, true))
+			.then(ack => {
+				this.subscribed = false;
+				return this;
+			});
 	}
 }
