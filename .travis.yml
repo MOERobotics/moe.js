@@ -1,0 +1,4 @@
+language: node_js
+install:
+	- npm i -g typescript
+script: tsc
