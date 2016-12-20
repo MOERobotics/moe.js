@@ -43,7 +43,10 @@ export interface DataPacket {
 	getAckId() : number;
 	getChannelId() : number;
 	getTypeCode() : number;
+	getType() : string;
 	getArrayBuffer() : ArrayBuffer;
+	getView() : DataView;
+	getDataView() : DataView;
 }
 export interface MutableDataPacket extends DataPacket {
 	setId(value:number):void;
