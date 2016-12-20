@@ -59,15 +59,15 @@ export interface DataChannel extends EventTarget {
 	getName() : string;
 	getDirection() : DataChannelDirection;
 	getMediaType() : DataChannelMediaType;
-	subscribe() : Promise<any>;
+	subscribe() : Promise<DataChannel>;
 	isSubscribed() : boolean;
-	getMetadata() : Promise<any>;
-	sendPacket(packet:DataPacket, expectResponse?:boolean) : Optional<Promise<DataPacket>>;
-	unsubscribe() : Promise<any>;
+	getMetadata() : Promise<{[index: string]: string|any}>;
+	sendPacket(packet:DataPacket, expectResponse?: boolean) : Optional<Promise<DataPacket>>;
+	unsubscribe() : Promise<DataChannel>;
 }
 export interface DataStream extends EventTarget {
-        getAvailableChannels(): Promise<DataChannel[]>;
-        isConnected() : boolean;
+	getAvailableChannels(): Promise<DataChannel[]>;
+	isConnected(): boolean;
 	close() : void;
 }
 export interface PropertyAccessChannel extends DataChannel {
@@ -77,4 +77,8 @@ export interface PropertyAccessChannel extends DataChannel {
 }
 export class PacketRecievedEvent extends Event {
 	readonly packet : DataPacket;
+	constructor(packet: DataPacket) {
+		super('packet', {cancelable: false});
+		this.packet = packet;
+	}
 }
