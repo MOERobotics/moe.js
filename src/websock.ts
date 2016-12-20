@@ -98,11 +98,45 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 		return this.subscribed;
 	}
 	getMetadata() : Promise<any> {
-		return new Promise<any> ((yay,nay) => {
-			//TODO finish
-		});
+		var reqPacket = new WrappedPacket(2);
+		reqPacket.setTypeCode(PacketTypeCode.CHANNEL_METADATA_REQUEST);
+		reqPacket.getDataView().setUint16(0, this.getId());
+		return (<Promise<DataPacket>>this.stream.channels[0].sendPacket(reqPacket, true))
+			.then((packet: DataPacket) => {
+				const data = packet.getDataView();
+				const numEntries : number = data.getUint16(0);
+				const decoder = new TextDecoder("utf8");
+				var pos : number = 2;
+				
+				function readNext() {
+					var len : number = data.getUint8(pos++);
+					if (len == 0xFF) {
+						len += data.getUint16(pos);
+						pos += 2;
+					}
+					var view = new DataView(data.buffer, data.byteOffset + pos, len);
+					pos += len;
+					return decoder.decode(view);
+				}
+				
+				var result = {};
+				
+				for (var i = 0; i < numEntries; i++) {
+					var key = readNext();
+					var value = readNext();
+					var obj = result;
+					var split;
+					while ((split = key.indexOf('.')) > 0) {
+						var tmp = key.substr(0, split);
+						key = key.substr(split + 1);
+						obj = obj[tmp] = obj[tmp] || {};
+					}
+					obj[key] = value;
+				}
+				return result;
+			});
 	}
-	sendPacket(packet:MutableDataPacket, expectResponse:boolean = false) : Optional<Promise<DataPacket>> {
+	sendPacket(packet: MutableDataPacket, expectResponse: boolean = false): Optional<Promise<DataPacket>> {
 		if (packet.getChannelId() != this.getId())
 			packet.setChannelId(this.getId());
 		return this.stream._sendPacket(packet, expectResponse);
