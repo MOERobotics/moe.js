@@ -1,4 +1,4 @@
-import Decoder from "./decoder"
+import Decoder from "decoder"
 class H264Decoder {
 	protected readonly _worker : Worker;
 	onRenderFrame : (buf : Uint8Array, width : number, height : number) => void;
