@@ -21,7 +21,7 @@ export class MJPEGVideoStreamDecoder {
 				this._renderFrameMJPEG(e.packet);
 		});
 	}
-	_encodeFrame(data : Uint8Array) : string {
+	protected _encodeFrame(data : Uint8Array) : string {
 		//Thanks to stackoverflow.com/a/11092371/2759984, stackoverflow.com/a/9458996/2759984
 		var binary : string = '';
 		for (var i = 0; i < data.length; i++) {
@@ -33,7 +33,10 @@ export class MJPEGVideoStreamDecoder {
 	}
 	_renderFrameMJPEG(packet : DataPacket) : void {
 		var image = new Image();
-		image.onload = e => this.ctx.drawImage(image, this.rect.top, this.rect.left);
+		image.onload = e => {
+			this.ctx.clearRect(this.rect.top, this.rect.left, this.rect.width, this.rect.height);
+			this.ctx.drawImage(image, this.rect.top, this.rect.left);
+		};
 		image.src = this._encodeFrame(new Uint8Array(packet.getArrayBuffer(), 12));
 	}
 }

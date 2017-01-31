@@ -61,7 +61,7 @@ export class WebsocketDataStream extends Emitter implements DataStream {
 			});
 	}
 	protected _recvPacket(packet: DataPacket): void {
-		console.log('recieved packet',packet, packet.getType());
+		console.log('received packet',packet, packet.getType());
 		if (packet.getAckId() in this.ackHandlers) {
 			var handler = this.ackHandlers[packet.getAckId()];
 			if (packet.getTypeCode() == PacketTypeCode.ERROR)
