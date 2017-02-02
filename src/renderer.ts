@@ -10,7 +10,7 @@ export enum RendererState {
 	RUNNING,
 	PAUSED,
 	DEAD
-};
+}
 
 export interface Renderer extends EventTarget {
 	getBounds() : Rectangle;
@@ -26,8 +26,8 @@ export interface Renderer extends EventTarget {
 function rectanglesIntersect(r1 : Rectangle, r2 : Rectangle) : boolean {
 	return !(r2.left > r1.left + r1.width
 		|| r2.left + r2.width < r1.left
-		|| r2.top > r1.top + r1.bottom
-		|| r2.top + r2.bottom < r1.top);
+		|| r2.top > r1.top + r1.height
+		|| r2.top + r2.height < r1.top);
 }
 
 function rectanglesOuter(a : Rectangle, b : Rectangle | null) : Rectangle {
