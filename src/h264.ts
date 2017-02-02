@@ -1,6 +1,6 @@
 import Decoder from "decoder";
 import Emitter from "./events";
-import {Renderer, Rectangle} from "./renderer";
+import {Renderer, Rectangle, RendererState} from "./renderer";
 import VideoStreamRenderer from "./video";
 
 class H264Decoder {
@@ -58,7 +58,8 @@ class H264Decoder {
 export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	protected readonly canvas : HTMLCanvasElement;
 	protected bounds : Rectangle;
-	protected readonly webgl : boolean;
+	protected state : RendererState = RendererState.STOPPED;
+	readonly webgl : boolean;
 	protected readonly decoder : H264Decoder;
 	protected readonly ctx : CanvasRenderingContext2D | WebGLRenderingContext;
 	protected shaderProgram : WebGLProgram;
@@ -69,8 +70,6 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	constructor(options : {canvas: HTMLCanvasElement, bounds?: Rectangle, webgl? : boolean, worker? : boolean}) {
 		this.canvas = options.canvas;
 		this.bounds = options.bounds || {top:0,left:0,width:options.canvas.width,height:this.canvas.height};
-		options.canvas.width = this.width;
-		options.canvas.height = this.height;
 		this.webgl = false;
 		if (options.webgl === true || typeof options.webgl !== 'boolean') {
 			if ('WebGLRenderingContext' in window) {
@@ -83,7 +82,7 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 		}
 		if (!this.ctx) {
 			this.ctx = this.canvas.getContext('2d');
-			this.imageData = this.ctx.createImageData(this.width, this.height);
+			this.imageData = this.ctx.createImageData(this.bounds.width, this.bounds.height);
 		} else if (this.webgl) {
 			this._initProgramWebGL();
 			this._initBuffersWebGL();
@@ -97,14 +96,58 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	/**
 	 * Draw frame from raw (encoded) data
 	 */
-	draw(data : {buffer : Uint8Array, byteOffset? : number, length? : number}) : void{
+	draw(data : {buffer : Uint8Array, byteOffset? : number, length? : number}) : void {
 		this.decoder.decode({
 			buffer: data.buffer,
 			byteOffset: data.byteOffset || 0,
 			length: data.length || 0
 		});
 	}
-	_initProgramWebGL() : void {
+	
+	offerPacket(packet : DataPacket) {
+		this.decoder.draw({data: new Uint8Array(packet.getArrayBuffer()), byteOffset: packet.getDataView().byteOffset});
+	}
+	
+	protected transition(origin : RendererState, dest : RendererState, name : string) : void {
+		if (this.state != origin)
+			return;
+		this.state = dest;
+		this.triggerEvent(new CustomEvent(name, {details:{renderer:this}}));
+	}
+	
+	start() : void {
+		this.transition(RendererState.STOPPED, RendererState.RUNNING, 'renderer.start');
+		//TODO actually initialize resources here
+	}
+	
+	pause() : void {
+		this.transition(RendererState.RUNNING, RendererState.PAUSED, 'renderer.pause');
+	}
+	
+	resume() : void {
+		this.transition(RendererState.PAUSED, RendererState.RUNNING, 'renderer.resume');
+	}
+	
+	stop() : void {
+		this.state = RendererState.STOPPED;
+		this.lastFrame = null;
+		this.triggerEvent(new CustomEvent('renderer.stop', {details:{renderer:this}}));
+	}
+	
+	getBounds() : Rectangle {
+		return this.bounds;
+	}
+	
+	setBounds(bounds : Rectangle) : void {
+		this.bounds = bounds;
+	}
+	
+	refresh() : Rectangle | null {
+		//Not supported ATM
+		return null;
+	}
+	
+	protected _initProgramWebGL() : void {
 		const YUV2RGB = [
 			1.16438,  0.00000,  1.59603, -0.87079,
 			1.16438, -0.39176, -0.81297,  0.52959,
@@ -146,28 +189,28 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 		gl.compileShader(vertexShader);
 		if(!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS))
 			console.error('Vertex shader failed to compile: ' + gl.getShaderInfoLog(vertexShader));
-
+		
 		var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
 		gl.shaderSource(fragmentShader, fragmentShaderScript);
 		gl.compileShader(fragmentShader);
 		if(!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS))
 		console.error('Fragment shader failed to compile: ' + gl.getShaderInfoLog(fragmentShader));
-
+		
 		var program = gl.createProgram();
 		gl.attachShader(program, vertexShader);
 		gl.attachShader(program, fragmentShader);
 		gl.linkProgram(program);
 		if(!gl.getProgramParameter(program, gl.LINK_STATUS))
 			console.error('Program failed to compile: ' + gl.getProgramInfoLog(program));
-
+		
 		gl.useProgram(program);
-
+		
 		var YUV2RGBRef = gl.getUniformLocation(program, 'YUV2RGB');
 		gl.uniformMatrix4fv(YUV2RGBRef, false, YUV2RGB);
-
+		
 		this.shaderProgram = program;
 	}
-	_initBuffersWebGL() : void {
+	protected _initBuffersWebGL() : void {
 		var gl = this.ctx as WebGLRenderingContext;
 		var program = this.shaderProgram;
 		var vertexPosBuffer = gl.createBuffer();
@@ -208,7 +251,9 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 
 		this.vTexturePosBuffer = vTexturePosBuffer;
 	}
-	_doRenderFrameWebGL(buffer : Uint8ClampedArray, width : number, height : number) : void {
+	protected _doRenderFrameWebGL(buffer : Uint8ClampedArray, width : number, height : number) : void {
+		if (this.state != RendererState.RUNNING)
+			return;
 		console.log('rendering frame webgl');
 		const gl = this.ctx as WebGLRenderingContext;
 		var texturePosBuffer = this.texturePosBuffer;
@@ -235,13 +280,17 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, texturePosBuffer);
 		gl.bufferData(gl.ARRAY_BUFFER, texturePosValues, gl.DYNAMIC_DRAW);
+		this.dispatchEvent(new CustomEvent('renderer.clobber', {details: {renderer: this, rect: this.bounds}}));
 		console.log('done');
 	}
-	_doRenderFrameRGB(buffer : Uint8ClampedArray, width : number, height : number) : void {
+	protected _doRenderFrameRGB(buffer : Uint8ClampedArray, width : number, height : number) : void {
+		if (this.state != RendererState.RUNNING)
+			return;
 		console.log('rendering frame raw');
 		const imageData = this.imageData;
 		const ctx = this.ctx as CanvasRenderingContext2D;
 		imageData.data.set(buffer);
-		ctx.putImageData(imageData, 0, 0);
+		ctx.putImageData(imageData, this.bounds.top, this.bounds.left);
+		this.dispatchEvent(new CustomEvent('renderer.clobber', {details: {renderer: this, rect: this.bounds}}));
 	}
 }
