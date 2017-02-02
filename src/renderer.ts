@@ -62,18 +62,19 @@ export class RenderPipeline {
 	}
 	protected doHandleEvent(idx : number, e : Event) {
 		var self = this.eh[idx];
+		var target : Renderer = (e as CustomEvent).detail.renderer;
 		switch (e.type) {
 			case 'renderer.start':
 				//TODO: re-add self as handler
 				break;
 			case 'renderer.stop':
-				renderer.removeEventListener('renderer.stop', self);
-				renderer.removeEventListener('renderer.clobber', self);
-				renderer.removeEventListener('renderer.pause', self);
-				renderer.removeEventListener('renderer.resume', self);
+				target.removeEventListener('renderer.stop', self);
+				target.removeEventListener('renderer.clobber', self);
+				target.removeEventListener('renderer.pause', self);
+				target.removeEventListener('renderer.resume', self);
 				break;
 			case 'renderer.clobber':
-				this.clobber(idx, e.details.rect);
+				this.clobber(idx, (e as CustomEvent).detail.rect);
 				break;
 		}
 	}

@@ -69,6 +69,7 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	protected vTexturePosBuffer : WebGLBuffer;
 	protected readonly imageData : ImageData;
 	constructor(options : {canvas: HTMLCanvasElement, bounds?: Rectangle, webgl? : boolean, worker? : boolean}) {
+		super();
 		this.canvas = options.canvas;
 		this.bounds = options.bounds || {top:0,left:0,width:options.canvas.width,height:this.canvas.height};
 		this.webgl = false;
@@ -106,14 +107,14 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	}
 	
 	offerPacket(packet : DataPacket) {
-		this.decoder.draw({data: new Uint8Array(packet.getArrayBuffer()), byteOffset: packet.getDataView().byteOffset});
+		this.draw({buffer: new Uint8Array(packet.getArrayBuffer()), byteOffset: packet.getDataView().byteOffset});
 	}
 	
 	protected transition(origin : RendererState, dest : RendererState, name : string) : void {
 		if (this.state != origin)
 			return;
 		this.state = dest;
-		this.triggerEvent(new CustomEvent(name, {details:{renderer:this}}));
+		this.dispatchEvent(new CustomEvent(name, {detail:{renderer:this}}));
 	}
 	
 	start() : void {
@@ -131,10 +132,13 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	
 	stop() : void {
 		this.state = RendererState.STOPPED;
-		this.lastFrame = null;
-		this.triggerEvent(new CustomEvent('renderer.stop', {details:{renderer:this}}));
+		this.dispatchEvent(new CustomEvent('renderer.stop', {detail:{renderer:this}}));
 	}
-	
+
+	getState() : RendererState {
+		return this.state;
+	}
+
 	getBounds() : Rectangle {
 		return this.bounds;
 	}
@@ -281,7 +285,7 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, texturePosBuffer);
 		gl.bufferData(gl.ARRAY_BUFFER, texturePosValues, gl.DYNAMIC_DRAW);
-		this.dispatchEvent(new CustomEvent('renderer.clobber', {details: {renderer: this, rect: this.bounds}}));
+		this.dispatchEvent(new CustomEvent('renderer.clobber', {detail: {renderer: this, rect: this.bounds}}));
 		console.log('done');
 	}
 	protected _doRenderFrameRGB(buffer : Uint8ClampedArray, width : number, height : number) : void {
@@ -292,6 +296,6 @@ export class H264Renderer extends Emitter implements VideoStreamRenderer {
 		const ctx = this.ctx as CanvasRenderingContext2D;
 		imageData.data.set(buffer);
 		ctx.putImageData(imageData, this.bounds.top, this.bounds.left);
-		this.dispatchEvent(new CustomEvent('renderer.clobber', {details: {renderer: this, rect: this.bounds}}));
+		this.dispatchEvent(new CustomEvent('renderer.clobber', {detail: {renderer: this, rect: this.bounds}}));
 	}
 }
