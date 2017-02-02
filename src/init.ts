@@ -1,8 +1,9 @@
-import {WebsocketDataStream} from './websock';
+import WebsocketDataStream from './websock';
 import {DataChannel, DataChannelMediaType, PacketRecievedEvent, PacketTypeCode} from './channels';
-import {MJPEGVideoStreamDecoder} from './video';
-import {H264Renderer} from './h264';
-import {Renderer, Rectangle, RenderPipeline} from "./renderer";
+import VideoStreamRenderer from './video';
+import MJPEGVideoStreamDecoder from './mjpeg';
+import H264Renderer from './h264';
+import {Renderer, RendererState, Rectangle, RenderPipeline} from "./renderer";
 
 var wsAddr = 'ws://' + window.location.host + '/vdc.ws';
 const wsProtocol = 'v0.moews';//'mjswds1.0-alpha';
@@ -17,9 +18,10 @@ enum State {
 	ERROR
 }
 
-class BackgroundRenderer implements Renderer {
+class BackgroundRenderer extends EventSource implements Renderer {
 	protected readonly canvas : HTMLCanvasElement;
 	protected readonly context : CanvasRenderingContext2D;
+	protected state : RendererState = RendererState.STOPPED;
 	protected __doRender : boolean;
 	protected messages : string[] = [];
 	protected mgr : StageManager;
@@ -28,57 +30,90 @@ class BackgroundRenderer implements Renderer {
 		this.canvas = canvas;
 		this.context = context;
 		this.mgr = mgr;
-		this.doRender = false;
 		this.canvas.addEventListener('click', e=>this.__handleClick(e));
 	}
-	get doRender() : boolean {
-		return this.__doRender;
+	
+	protected transition(origin : RendererState, dest : RendererState, name : string) : boolean {
+		if (this.state != origin)
+			return false;
+		this.state = dest;
+		this.triggerEvent(new CustomEvent(name, {details:{renderer:this}}));
+		return true;
 	}
-	set doRender(v : boolean) {
-		var ud = v && !this.__doRender;
-		this.__doRender = v;
-		this.redraw = true;
-		if (ud)
-			this.render();
+	
+	start() : void {
+		if (this.state != RendererState.STOPPED)
+			return;
+		this.state = RendererState.RUNNING;
+		this.render();
+		this.triggerEvent(new CustomEvent('renderer.start', {details:{renderer:this}}));
 	}
-	protected render() : void {
-		if (this.redraw) {
-			const ctx = this.context;
-			const cvs = ctx.canvas;
-			const w = cvs.width;
-			const h = cvs.height;
-			ctx.fillStyle = '#4CAF50';
-			ctx.fillRect(0, 0, w, h);
-			ctx.fillStyle = '#000';
-			ctx.font = "100px Arial";
-			ctx.textAlign = 'center';
-			var titleWidth = ctx.measureText('MOE.js').width;
-			var stateTextLeft = (w - titleWidth) / 2 + 5;
-			ctx.fillText('MOE.js', w / 2, h * .3);
-			
-			ctx.font = '36px Arial';
-			ctx.textAlign = 'left';
-			ctx.fillText('[' + State[this.mgr.state].toLowerCase() + ']', stateTextLeft, h * .3 + 30);
-			
-			switch (this.mgr.state) {
-				case State.WAITING:
-					ctx.fillStyle = '#00E676';
-					ctx.fillRect((w - titleWidth) / 2, h / 2, titleWidth, 100);
-					ctx.textAlign = 'center';
-					ctx.fillStyle = '#fff';
-					ctx.font = '48px Courier';
-					ctx.fillText('CONNECT', w / 2, h / 2 + 62);
-					break;
-			}
-			
-			ctx.fillStyle = 'rgba(0,0,0,.7)';
-			ctx.font = '12px Courier';
-			ctx.textAlign = 'left';
-			for (var i = 0; i < this.messages.length; i++)
-				ctx.fillText(this.messages[i], 10, i * 14 + 14);
-			this.redraw = false;
+	
+	pause() : void {
+		this.transition(RendererState.RUNNING, RendererState.PAUSED, 'renderer.pause');
+	}
+	
+	resume() : void {
+		this.transition(RendererState.PAUSED, RendererState.RUNNING, 'renderer.resume');
+	}
+	
+	stop() : void {
+		this.state = RendererState.STOPPED;
+		this.triggerEvent(new CustomEvent('renderer.stop', {details:{renderer:this}}));
+	}
+	
+	getBounds() : Rectangle {
+		return {top:0,left:0,width:this.canvas.width,height:this.canvas.height};
+	}
+	
+	setBounds(bounds : Rectangle) : void {
+		return;
+	}
+	
+	protected refresh() : Rectangle | null {
+		if (!this.redraw)
+			return null;
+		const ctx = this.context;
+		const cvs = ctx.canvas;
+		const w = cvs.width;
+		const h = cvs.height;
+		ctx.fillStyle = '#4CAF50';
+		ctx.fillRect(0, 0, w, h);
+		ctx.fillStyle = '#000';
+		ctx.font = "100px Arial";
+		ctx.textAlign = 'center';
+		var titleWidth = ctx.measureText('MOE.js').width;
+		var stateTextLeft = (w - titleWidth) / 2 + 5;
+		ctx.fillText('MOE.js', w / 2, h * .3);
+
+		ctx.font = '36px Arial';
+		ctx.textAlign = 'left';
+		ctx.fillText('[' + State[this.mgr.state].toLowerCase() + ']', stateTextLeft, h * .3 + 30);
+
+		switch (this.mgr.state) {
+			case State.WAITING:
+				ctx.fillStyle = '#00E676';
+				ctx.fillRect((w - titleWidth) / 2, h / 2, titleWidth, 100);
+				ctx.textAlign = 'center';
+				ctx.fillStyle = '#fff';
+				ctx.font = '48px Courier';
+				ctx.fillText('CONNECT', w / 2, h / 2 + 62);
+				break;
 		}
-		if (this.doRender)
+
+		ctx.fillStyle = 'rgba(0,0,0,.7)';
+		ctx.font = '12px Courier';
+		ctx.textAlign = 'left';
+		for (var i = 0; i < this.messages.length; i++)
+			ctx.fillText(this.messages[i], 10, i * 14 + 14);
+		this.redraw = false;
+		return this.getBounds();
+	}
+	render() : void {
+		var clobbered = this.refresh();
+		if (clobbered != null)
+			this.dispatchEvent(new CustomEvent('renderer.clobber', {details:{renderer:this,rect:clobbered}}));
+		if (this.state == RendererState.RUNNING || this.state == RendererState.PAUSED)
 			window.setTimeout(x=>this.render(), 100);
 	}
 	log(msg : string) : void {
@@ -114,16 +149,15 @@ export class StageManager {
 			var rect = this.canvas.getClientRects()[0];
 			this.canvas.width = rect.width;
 			this.canvas.height = rect.height;
-			this.renderer.redraw = true;	
+			this.renderer.redraw = true;
 		});
 		this.pipeline.add(this.renderer, 0);
+		this.renderer.start();
 		window.dispatchEvent(new Event('resize'));
 	}
 	set state(s : State) {
 		var oldState = this.__state;
 		this.__state = s;
-		if (oldState != s)
-			this.renderer.doRender = true;
 		switch (s) {
 			case State.CONNECTING:
 				this.doConnect();
@@ -142,7 +176,7 @@ export class StageManager {
 	start() {
 		this.state = State.INITIALIZING;
 		this.log('[STAGE] Starting default renderer');
-		this.renderer.doRender = true;
+		this.renderer.resume();
 		if (window.location.hash.indexOf('autoconnect=true') >= 0) {
 			this.log('[AUTOCONNECT] Skipping waiting dialog');
 			this.state = State.CONNECTING;
