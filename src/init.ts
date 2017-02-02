@@ -1,8 +1,9 @@
-import WebsocketDataStream from './websock';
+import {WebsocketDataStream} from './websock';
 import {DataChannel, DataChannelMediaType, PacketRecievedEvent, PacketTypeCode} from './channels';
-import VideoStreamRenderer from './video';
-import MJPEGVideoStreamDecoder from './mjpeg';
-import H264Renderer from './h264';
+import {VideoStreamRenderer} from './video';
+import {MJPEGVideoStreamDecoder} from './mjpeg';
+import {H264Renderer} from './h264';
+import {Emitter} from "./events";
 import {Renderer, RendererState, Rectangle, RenderPipeline} from "./renderer";
 
 var wsAddr = 'ws://' + window.location.host + '/vdc.ws';

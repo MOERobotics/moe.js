@@ -1,7 +1,8 @@
-import Decoder from "decoder";
-import Emitter from "./events";
+import Decoder from "./decoder";
+import {Emitter} from "./events";
+import {DataPacket} from "./channels";
 import {Renderer, Rectangle, RendererState} from "./renderer";
-import VideoStreamRenderer from "./video";
+import {VideoStreamRenderer} from "./video";
 
 class H264Decoder {
 	protected readonly _worker : Worker;
