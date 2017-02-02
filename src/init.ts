@@ -28,6 +28,7 @@ class BackgroundRenderer extends EventSource implements Renderer {
 	protected mgr : StageManager;
 	redraw : boolean = true;
 	constructor(canvas : HTMLCanvasElement, context : CanvasRenderingContext2D, mgr : StageManager) {
+		super();
 		this.canvas = canvas;
 		this.context = context;
 		this.mgr = mgr;
@@ -38,7 +39,7 @@ class BackgroundRenderer extends EventSource implements Renderer {
 		if (this.state != origin)
 			return false;
 		this.state = dest;
-		this.triggerEvent(new CustomEvent(name, {details:{renderer:this}}));
+		this.dispatchEvent(new CustomEvent(name, {detail:{renderer:this}}));
 		return true;
 	}
 	
@@ -47,7 +48,7 @@ class BackgroundRenderer extends EventSource implements Renderer {
 			return;
 		this.state = RendererState.RUNNING;
 		this.render();
-		this.triggerEvent(new CustomEvent('renderer.start', {details:{renderer:this}}));
+		this.dispatchEvent(new CustomEvent('renderer.start', {detail:{renderer:this}}));
 	}
 	
 	pause() : void {
@@ -60,7 +61,7 @@ class BackgroundRenderer extends EventSource implements Renderer {
 	
 	stop() : void {
 		this.state = RendererState.STOPPED;
-		this.triggerEvent(new CustomEvent('renderer.stop', {details:{renderer:this}}));
+		this.dispatchEvent(new CustomEvent('renderer.stop', {detail:{renderer:this}}));
 	}
 	
 	getBounds() : Rectangle {
@@ -70,8 +71,12 @@ class BackgroundRenderer extends EventSource implements Renderer {
 	setBounds(bounds : Rectangle) : void {
 		return;
 	}
-	
-	protected refresh() : Rectangle | null {
+
+	getState() : RendererState {
+		return this.state;
+	}
+
+	refresh() : Rectangle | null {
 		if (!this.redraw)
 			return null;
 		const ctx = this.context;
@@ -110,10 +115,10 @@ class BackgroundRenderer extends EventSource implements Renderer {
 		this.redraw = false;
 		return this.getBounds();
 	}
-	render() : void {
+	protected render() : void {
 		var clobbered = this.refresh();
 		if (clobbered != null)
-			this.dispatchEvent(new CustomEvent('renderer.clobber', {details:{renderer:this,rect:clobbered}}));
+			this.dispatchEvent(new CustomEvent('renderer.clobber', {detail:{renderer:this,rect:clobbered}}));
 		if (this.state == RendererState.RUNNING || this.state == RendererState.PAUSED)
 			window.setTimeout(x=>this.render(), 100);
 	}
@@ -144,8 +149,8 @@ export class StageManager {
 		this.canvas = options.canvas;
 		this.ctx2d = this.canvas.getContext('2d');
 		this.pipeline = new RenderPipeline();
-		
-		this.renderer = new DefaultRenderer(this.canvas, this.ctx2d, this);
+
+		this.renderer = new BackgroundRenderer(this.canvas, this.ctx2d, this);
 		window.addEventListener('resize', e=>{
 			var rect = this.canvas.getClientRects()[0];
 			this.canvas.width = rect.width;
