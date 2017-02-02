@@ -2,6 +2,7 @@ import {WebsocketDataStream} from './websock';
 import {DataChannel, DataChannelMediaType, PacketRecievedEvent, PacketTypeCode} from './channels';
 import {MJPEGVideoStreamDecoder} from './video';
 import {H264Renderer} from './h264';
+import {Renderer, Rectangle, RenderPipeline} from "./renderer";
 
 var wsAddr = 'ws://' + window.location.host + '/vdc.ws';
 const wsProtocol = 'v0.moews';//'mjswds1.0-alpha';
@@ -16,7 +17,7 @@ enum State {
 	ERROR
 }
 
-class DefaultRenderer {
+class BackgroundRenderer implements Renderer {
 	protected readonly canvas : HTMLCanvasElement;
 	protected readonly context : CanvasRenderingContext2D;
 	protected __doRender : boolean;
@@ -43,7 +44,7 @@ class DefaultRenderer {
 	protected render() : void {
 		if (this.redraw) {
 			const ctx = this.context;
-			const cvs = this.canvas;
+			const cvs = ctx.canvas;
 			const w = cvs.width;
 			const h = cvs.height;
 			ctx.fillStyle = '#4CAF50';
@@ -99,12 +100,15 @@ export class StageManager {
 	protected readonly ctx2d : CanvasRenderingContext2D;
 	protected __state : State;
 	protected renderer : DefaultRenderer;
+	protected pipeline : RenderPipeline;
 	protected stream : WebsocketDataStream;
 	protected videoChannel : DataChannel;
 	protected decoder : any;
 	constructor(options: {canvas: HTMLCanvasElement}) {
 		this.canvas = options.canvas;
 		this.ctx2d = this.canvas.getContext('2d');
+		this.pipeline = new RenderPipeline();
+		
 		this.renderer = new DefaultRenderer(this.canvas, this.ctx2d, this);
 		window.addEventListener('resize', e=>{
 			var rect = this.canvas.getClientRects()[0];
@@ -112,6 +116,7 @@ export class StageManager {
 			this.canvas.height = rect.height;
 			this.renderer.redraw = true;	
 		});
+		this.pipeline.add(this.renderer, 0);
 		window.dispatchEvent(new Event('resize'));
 	}
 	set state(s : State) {

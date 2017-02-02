@@ -1,4 +1,8 @@
-import Decoder from "decoder"
+import Decoder from "decoder";
+import Emitter from "./events";
+import {Renderer, Rectangle} from "./renderer";
+import VideoStreamRenderer from "./video";
+
 class H264Decoder {
 	protected readonly _worker : Worker;
 	onRenderFrame : (buf : Uint8Array, width : number, height : number) => void;
@@ -51,10 +55,9 @@ class H264Decoder {
 	}
 }
 
-export class H264Renderer {
+export class H264Renderer extends Emitter implements VideoStreamRenderer {
 	protected readonly canvas : HTMLCanvasElement;
-	protected readonly width : number;
-	protected readonly height : number;
+	protected bounds : Rectangle;
 	protected readonly webgl : boolean;
 	protected readonly decoder : H264Decoder;
 	protected readonly ctx : CanvasRenderingContext2D | WebGLRenderingContext;
@@ -63,10 +66,9 @@ export class H264Renderer {
 	protected uTexturePosBuffer : WebGLBuffer;
 	protected vTexturePosBuffer : WebGLBuffer;
 	protected readonly imageData : ImageData;
-	constructor(options : {canvas: HTMLCanvasElement, width: number, height: number, webgl? : boolean, worker? : boolean}) {
+	constructor(options : {canvas: HTMLCanvasElement, bounds?: Rectangle, webgl? : boolean, worker? : boolean}) {
 		this.canvas = options.canvas;
-		this.width = options.width || options.canvas.width;
-		this.height = options.height || options.canvas.height;
+		this.bounds = options.bounds || {top:0,left:0,width:options.canvas.width,height:this.canvas.height};
 		options.canvas.width = this.width;
 		options.canvas.height = this.height;
 		this.webgl = false;
