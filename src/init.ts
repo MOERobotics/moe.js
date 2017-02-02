@@ -19,7 +19,7 @@ enum State {
 	ERROR
 }
 
-class BackgroundRenderer extends EventSource implements Renderer {
+class BackgroundRenderer extends Emitter implements Renderer {
 	protected readonly canvas : HTMLCanvasElement;
 	protected readonly context : CanvasRenderingContext2D;
 	protected state : RendererState = RendererState.STOPPED;
@@ -140,7 +140,7 @@ export class StageManager {
 	protected readonly canvas : HTMLCanvasElement;
 	protected readonly ctx2d : CanvasRenderingContext2D;
 	protected __state : State;
-	protected renderer : DefaultRenderer;
+	protected renderer : BackgroundRenderer;
 	protected pipeline : RenderPipeline;
 	protected stream : WebsocketDataStream;
 	protected videoChannel : DataChannel;
@@ -238,11 +238,11 @@ export class StageManager {
 				};
 				switch (videoData.format) {
 					case 'MJPEG':
-						this.decoder = new MJPEGVideoStreamDecoder({channel: this.videoChannel, ctx: this.ctx2d, rect: rect});
+						this.decoder = new MJPEGVideoStreamDecoder({ctx: this.ctx2d, bounds: rect});
 						break;
 					case 'H.264':
 					case 'H264':
-						this.decoder = new H264Renderer({canvas: this.canvas, width: rect.width, height: rect.height, webgl: true, worker: true});
+						this.decoder = new H264Renderer({canvas: this.canvas, bounds: rect, webgl: true, worker: true});
 						this.videoChannel.addEventListener('packet', (e:PacketRecievedEvent)=>{
 							if (e.packet.getTypeCode() === PacketTypeCode.STREAM_FRAME)
 								this.decoder.draw({data: new Uint8Array(e.packet.getArrayBuffer()), byteOffset: e.packet.getDataView().byteOffset});
