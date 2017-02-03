@@ -1,0 +1,11 @@
+package com.mopi
+syntax = "proto3"
+message Overlay {
+	message PreciseRectangle {
+		required float top;
+		required float left;
+		required float width;
+		required float height;
+	}
+	repeated PreciseRectangle rectangles = 1;
+}

@@ -60,6 +60,11 @@ export class WebsocketDataStream extends Emitter implements DataStream {
 				return this.channels;
 			});
 	}
+
+	getChannel(index : number) : DataChannel | null {
+		return this.channels[index] || null;
+	}
+
 	protected _recvPacket(packet: DataPacket): void {
 		console.log('received packet',packet, packet.getType());
 		if (packet.getAckId() in this.ackHandlers) {
@@ -187,8 +192,10 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 		return this.stream._sendPacket(packet, expectResponse);
 	}
 	unsubscribe() : Promise<DataChannel> {
-		if (!this.isSubscribed())
+		if (!this.isSubscribed()) {
+			this.handlers = {};
 			return Promise.resolve(this);
+		}
 		var unsubPacket = new WrappedPacket(4);
 		unsubPacket.setTypeCode(PacketTypeCode.CHANNEL_UNSUBSCRIBE);
 		var view = unsubPacket.getDataView();
@@ -196,6 +203,7 @@ class WebsocketDataChannel extends Emitter implements DataChannel {
 		view.setUint16(2, this.getId());
 		return (<Promise<DataPacket>>this.stream.channels[0].sendPacket(unsubPacket, true))
 			.then(ack => {
+				this.handlers = {};
 				this.subscribed = false;
 				return this;
 			});

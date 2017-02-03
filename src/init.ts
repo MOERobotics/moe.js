@@ -4,6 +4,7 @@ import {VideoStreamRenderer} from './video';
 import {MJPEGVideoStreamDecoder} from './mjpeg';
 import {H264Renderer} from './h264';
 import {Emitter} from "./events";
+import {OverlayRenderer} from "./overlay";
 import {Renderer, RendererState, Rectangle, RenderPipeline} from "./renderer";
 
 var wsAddr = 'ws://' + window.location.host + '/vdc.ws';
@@ -144,7 +145,9 @@ export class StageManager {
 	protected pipeline : RenderPipeline;
 	protected stream : WebsocketDataStream;
 	protected videoChannel : DataChannel;
-	protected decoder : any;
+	protected videoRenderer : VideoStreamRenderer;
+	protected overlayChannel : DataChannel;
+	protected overlayRenderer : OverlayRenderer;
 	constructor(options: {canvas: HTMLCanvasElement}) {
 		this.canvas = options.canvas;
 		this.ctx2d = this.canvas.getContext('2d');
@@ -202,59 +205,98 @@ export class StageManager {
 				return this.stream.getAvailableChannels();
 			}, error => {
 				this.log('[WS] Connection failed: ' + (error.message || 'could not connect'));
-				console.error(error);
-				this.state = State.WAITING;
+				this.deinit();
 				throw error;
-			}).then(channels=>{
-				this.log('[WS] Found ' + (<DataChannel[]>channels).length + ' channels');
-				console.log(channels);
-				var channel = null;
-				for (var channelID in channels)
-					if ((channel = channels[channelID]).getMediaType() == DataChannelMediaType.VIDEO)
-						break;
-				if (channel == null) {
-					this.log('[WS] No video channels found');
-					this.stream.close();
-					this.state = State.INITIALIZING;
-					throw null;
-				}
-				
-				this.log('[WS] Subscribing to channel #' + channel.getId());
-				return channel.subscribe();
-			}).then(channel=>{
+			})
+			.then(channels=>this.connectToVideoChannel(channels))
+			.then(channel=>{
 				this.videoChannel = channel;
 				this.log('[WS] Subscribed to channel #' + channel.getId());
 				this.log('[WS] =>Type: ' + DataChannelMediaType[channel.getMediaType()]);
 				this.log('[WS] Looking up metadata...');
 				return channel.getMetadata();
-			}).then(metadata => {
-				var videoData : {format?: string, width?: string, height?: string} = metadata['video'];
-				this.log('[WS] Video format: ' + videoData.format);
-				var rect = {
-					top: 0,
-					left: 0,
-					width: Number.parseInt(videoData.width || '100'),
-					height: Number.parseInt(videoData.height || '100'),
-				};
-				switch (videoData.format) {
-					case 'MJPEG':
-						this.decoder = new MJPEGVideoStreamDecoder({ctx: this.ctx2d, bounds: rect});
-						break;
-					case 'H.264':
-					case 'H264':
-						this.decoder = new H264Renderer({canvas: this.canvas, bounds: rect, webgl: true, worker: true});
-						this.videoChannel.addEventListener('packet', (e:PacketRecievedEvent)=>{
-							if (e.packet.getTypeCode() === PacketTypeCode.STREAM_FRAME)
-								this.decoder.draw({data: new Uint8Array(e.packet.getArrayBuffer()), byteOffset: e.packet.getDataView().byteOffset});
-						});
-						break;
-					default:
-						this.log('[ERROR] Unsupported video stream format.');
-						this.state = State.INITIALIZING;
-						this.videoChannel.unsubscribe().then(e=>this.stream.close());
-						throw null;
-				}
-				this.state = State.STREAMING;
-			});
+			})
+			.then(metadata => this.startStreaming(metadata));
+	}
+	protected connectToVideoChannel(channels : DataChannel[]) : Promise<DataChannel> {
+		this.log('[WS] Found ' + channels.length + ' channels');
+		console.log(channels);
+		var channel = null;
+		for (var channelID in channels)
+			if ((channel = channels[channelID]).getMediaType() == DataChannelMediaType.VIDEO)
+				break;
+		if (channel == null) {
+			this.log('[WS] No video channels found');
+			this.stream.close();
+			this.state = State.INITIALIZING;
+			throw null;
+		}
+
+		this.log('[WS] Subscribing to channel #' + channel.getId());
+		return channel.subscribe();
+	}
+	protected startStreaming(channelMetadata : {[index:string]:any}) : Promise<DataChannel> {
+		var videoData : {format?: string, width?: string, height?: string, overlayChannelId?: string} = channelMetadata['video'];
+		this.log('[WS] Video format: ' + videoData.format);
+		var rect = {
+			top: 0,
+			left: 0,
+			width: Number.parseInt(videoData.width || '100'),
+			height: Number.parseInt(videoData.height || '100'),
+		};
+		switch (videoData.format) {
+			case 'MJPEG':
+				this.videoRenderer = new MJPEGVideoStreamDecoder({ctx: this.ctx2d, bounds: rect});
+				break;
+			case 'H.264':
+			case 'H264':
+				this.videoRenderer = new H264Renderer({canvas: this.canvas, bounds: rect, webgl: true, worker: true});
+				break;
+			default:
+				this.log('[ERROR] Unsupported video stream format.');
+				this.deinit();
+				throw null;
+		}
+		this.videoChannel.addEventListener('packet', (e : PacketRecievedEvent) => this.videoRenderer.offerPacket(e.packet));
+		this.state = State.STREAMING;
+		if (videoData.overlayChannelId && (this.overlayChannel = this.stream.getChannel(Number.parseInt(videoData.overlayChannelId))))
+			return this.overlayChannel.subscribe()
+				.then(channel=>this.startOverlay(channel));
+		return;
+	}
+	protected startOverlay(overlayChannel : DataChannel) : DataChannel {
+		if (!this.overlayRenderer) {
+			this.overlayRenderer = new OverlayRenderer(this.videoRenderer.getBounds(), this.canvas);
+			this.pipeline.add(this.overlayRenderer, 2);
+		} else {
+			this.overlayRenderer.setBounds(this.videoRenderer.getBounds());
+		}
+
+		if (this.overlayRenderer.getState() == RendererState.STOPPED)
+			this.overlayRenderer.start();
+		overlayChannel.addEventListener('packet', (e : PacketRecievedEvent) => this.overlayRenderer.offerPacket(e.packet));
+
+		return overlayChannel;
+	}
+	protected deinit() : void {
+		//Promises that have to be completed before the DataStream can be closed
+		var streamFinishPromises : Promise<any>[] = [Promise.resolve()];
+		if (this.videoChannel) {
+			if (this.videoChannel.isSubscribed())
+				streamFinishPromises.push(this.videoChannel.unsubscribe());
+			this.videoChannel = null;
+		}
+		if (this.videoRenderer && this.videoRenderer.getState() == RendererState.RUNNING)
+			this.videoRenderer.stop();
+		if (this.overlayChannel) {
+			if (this.overlayChannel.isSubscribed())
+				streamFinishPromises.push(this.overlayChannel.unsubscribe());
+			this.overlayChannel = null;
+		}
+		if (this.overlayRenderer && this.overlayRenderer.getState() == RendererState.RUNNING)
+			this.overlayRenderer.stop();
+		if (this.stream && this.stream.isConnected())
+			Promise.all(streamFinishPromises).then(x=>this.stream.close());
+		this.state = State.DISCONNECTED;
 	}
 }

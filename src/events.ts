@@ -2,10 +2,7 @@
  * Implementation of EventTarget
  */
 export class Emitter implements EventTarget {
-	handlers: {[index:string]: EventListenerOrEventListenerObject[]};
-	constructor() {
-		this.handlers = {};
-	}
+	protected handlers: {[index:string]: EventListenerOrEventListenerObject[]} = {};
 	addEventListener(type: string, listener?: EventListenerOrEventListenerObject, options?: boolean | {capture?: boolean, once?: boolean, passive?: boolean}): void {
 		if (!(type in this.handlers))
 			this.handlers[type] = [];

@@ -67,6 +67,7 @@ export interface DataChannel extends EventTarget {
 }
 export interface DataStream extends EventTarget {
 	getAvailableChannels(): Promise<DataChannel[]>;
+	getChannel(id : number) : DataChannel | null;
 	isConnected(): boolean;
 	close() : void;
 }
