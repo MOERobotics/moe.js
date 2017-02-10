@@ -161,7 +161,6 @@ export class StageManager {
 			this.renderer.redraw = true;
 		});
 		this.pipeline.add(this.renderer, 0);
-		this.renderer.start();
 		window.dispatchEvent(new Event('resize'));
 	}
 	set state(s : State) {
@@ -184,6 +183,7 @@ export class StageManager {
 	}
 	start() {
 		this.state = State.INITIALIZING;
+		this.renderer.start();
 		this.log('[STAGE] Starting default renderer');
 		this.renderer.resume();
 		if (window.location.hash.indexOf('autoconnect=true') >= 0) {
