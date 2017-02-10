@@ -1,4 +1,4 @@
-import Decoder from "./decoder";
+import Decoder from "decoder"
 import {Emitter} from "./events";
 import {DataPacket} from "./channels";
 import {Renderer, Rectangle, RendererState} from "./renderer";
