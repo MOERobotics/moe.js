@@ -259,6 +259,7 @@ export class StageManager {
 		}
 		this.videoChannel.addEventListener('packet', (e : PacketRecievedEvent) => this.videoRenderer.offerPacket(e.packet));
 		this.state = State.STREAMING;
+		this.videoRenderer.start();
 		if (videoData.overlayChannelId && (this.overlayChannel = this.stream.getChannel(Number.parseInt(videoData.overlayChannelId))))
 			return this.overlayChannel.subscribe()
 				.then(channel=>this.startOverlay(channel));
