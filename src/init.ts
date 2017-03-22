@@ -114,6 +114,7 @@ class BackgroundRenderer extends Emitter implements Renderer {
 		this.redraw = false;
 		return this.getBounds();
 	}
+	
 	protected render() : void {
 		if (this.redraw) {
 			var clobbered = this.refresh();
@@ -257,6 +258,7 @@ export class StageManager {
 				this.deinit();
 				throw null;
 		}
+		this.pipeline.add(this.videoRenderer, 1);
 		this.videoChannel.addEventListener('packet', (e : PacketRecievedEvent) => this.videoRenderer.offerPacket(e.packet));
 		this.state = State.STREAMING;
 		this.videoRenderer.start();
