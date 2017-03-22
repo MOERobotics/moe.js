@@ -76,7 +76,7 @@ export class MJPEGVideoStreamDecoder extends Emitter implements VideoStreamRende
 			this.lastFrame = image;
 			const rect = this.bounds;
 			this.ctx.clearRect(rect.top, rect.left, rect.width, rect.height);
-			this.ctx.drawImage(image, rect.top, rect.left);
+			this.ctx.drawImage(image, rect.top, rect.left, rect.width, rect.height);
 			this.dispatchEvent(new CustomEvent('renderer.clobber', {detail:{renderer:this,rect:rect}}));
 		};
 		image.src = this._encodeFrame(new Uint8Array(packet.getArrayBuffer(), 12));
@@ -85,7 +85,7 @@ export class MJPEGVideoStreamDecoder extends Emitter implements VideoStreamRende
 		if (this.lastFrame && this.state == RendererState.RUNNING) {
 			const rect = this.bounds;
 			this.ctx.clearRect(rect.top, rect.left, rect.width, rect.height);
-			this.ctx.drawImage(this.lastFrame, rect.top, rect.left);
+			this.ctx.drawImage(this.lastFrame, rect.top, rect.left, rect.width, rect.height);
 			return this.bounds;
 		}
 		return null;
