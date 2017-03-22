@@ -265,19 +265,22 @@ export class StageManager {
 		if (videoData.overlayChannelId && (this.overlayChannel = this.stream.getChannel(Number.parseInt(videoData.overlayChannelId))))
 			return this.overlayChannel.subscribe()
 				.then(channel=>this.startOverlay(channel));
+		this.startOverlay(null);
 		return;
 	}
-	protected startOverlay(overlayChannel : DataChannel) : DataChannel {
+	protected startOverlay(overlayChannel : DataChannel | null) : DataChannel {
 		if (!this.overlayRenderer) {
 			this.overlayRenderer = new OverlayRenderer(this.videoRenderer.getBounds(), this.canvas);
 			this.pipeline.add(this.overlayRenderer, 2);
 		} else {
 			this.overlayRenderer.setBounds(this.videoRenderer.getBounds());
 		}
+		this.overlayRenderer.setBounds(this.videoRenderer.getBounds());
 
 		if (this.overlayRenderer.getState() == RendererState.STOPPED)
 			this.overlayRenderer.start();
-		overlayChannel.addEventListener('packet', (e : PacketRecievedEvent) => this.overlayRenderer.offerPacket(e.packet));
+		if (overlayChannel)
+			overlayChannel.addEventListener('packet', (e : PacketRecievedEvent) => this.overlayRenderer.offerPacket(e.packet));
 
 		return overlayChannel;
 	}
