@@ -20,6 +20,10 @@ export interface Renderer extends EventTarget {
 	pause() : void;
 	resume() : void;
 	stop() : void;
+	/**
+	 * Optionally re-render. Called when an underlying layer redraws
+	 * @return the area overwritten, else null if nothing changed
+	 */
 	refresh() : Rectangle | null;
 }
 
@@ -50,14 +54,18 @@ export class RenderPipeline {
 		renderer.addEventListener('renderer.start', eh);
 		renderer.addEventListener('renderer.stop', eh);
 		renderer.addEventListener('renderer.clobber', eh);
+		renderer.addEventListener('renderer.clear', eh);
 	}
 	
-	clobber(index : number, rect : Rectangle) {
+	clobber(fromIndex : number, toIndex : number, rect : Rectangle) {
 		var clobbered = rect;
-		for (var i = index + 1; i < this.renderers.length; i++) {
+		for (var i = fromIndex; i < toIndex; i++) {
 			var renderer = this.renderers[i];
-			if (rectanglesIntersect(clobbered, renderer.getBounds()))
-				clobbered = rectanglesOuter(renderer.refresh(), clobbered);
+			if (renderer && rectanglesIntersect(clobbered, renderer.getBounds())) {
+				var r = renderer.refresh();
+				if (r)
+					clobbered = rectanglesOuter(renderer.refresh(), clobbered);
+			}
 		}
 	}
 	protected doHandleEvent(idx : number, e : Event) {
@@ -70,11 +78,16 @@ export class RenderPipeline {
 			case 'renderer.stop':
 				target.removeEventListener('renderer.stop', self);
 				target.removeEventListener('renderer.clobber', self);
+				target.removeEventListener('renderer.clear', self);
 				target.removeEventListener('renderer.pause', self);
 				target.removeEventListener('renderer.resume', self);
 				break;
 			case 'renderer.clobber':
-				this.clobber(idx, (e as CustomEvent).detail.rect);
+				this.clobber(idx + 1, this.renderers.length, (e as CustomEvent).detail.rect);
+				break;
+			case 'renderer.clear':
+				//Can probably reduce redraws by walking the pipeline backwards
+				this.clobber(0, idx, (e as CustomEvent).detail.rect);
 				break;
 		}
 	}
