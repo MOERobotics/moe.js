@@ -76,10 +76,8 @@ class BackgroundRenderer extends Emitter implements Renderer {
 	getState() : RendererState {
 		return this.state;
 	}
-
+	
 	refresh() : Rectangle | null {
-		if (!this.redraw)
-			return null;
 		const ctx = this.context;
 		const cvs = ctx.canvas;
 		const w = cvs.width;
@@ -117,9 +115,11 @@ class BackgroundRenderer extends Emitter implements Renderer {
 		return this.getBounds();
 	}
 	protected render() : void {
-		var clobbered = this.refresh();
-		if (clobbered != null)
-			this.dispatchEvent(new CustomEvent('renderer.clobber', {detail:{renderer:this,rect:clobbered}}));
+		if (this.redraw) {
+			var clobbered = this.refresh();
+			if (clobbered != null)
+				this.dispatchEvent(new CustomEvent('renderer.clobber', {detail:{renderer:this,rect:clobbered}}));
+		}
 		if (this.state == RendererState.RUNNING || this.state == RendererState.PAUSED)
 			window.setTimeout(x=>this.render(), 100);
 	}

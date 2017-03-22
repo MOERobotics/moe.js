@@ -50,7 +50,7 @@ export class WrappedPacket implements MutableDataPacket {
 			this.view.setUint16(2, value);
 		}
 		getView() : DataView {
-			return this.view
+			return this.view;
 		}
 		getDataView() : DataView {
 			return new DataView(this.getArrayBuffer(), 12);
